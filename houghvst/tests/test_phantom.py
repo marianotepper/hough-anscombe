@@ -1,13 +1,15 @@
-import colorcet as cc
 import matplotlib.pyplot as plt
 import matplotlib.lines as plt_lines
 import matplotlib.ticker as plt_tick
 from mpl_toolkits.axes_grid1 import ImageGrid
 import numpy as np
 import seaborn.apionly as sns
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, HuberRegressor
 import tifffile
-from houghvst.estimation.estimation import compute_blocks_mean_var
+from houghvst.estimation.estimation import compute_mean_var,\
+    estimate_sigma_alpha_blocks, estimate_sigma_alpha_image
+from houghvst.estimation.regions import im2col
+from houghvst.tests.measures import assess_variance_stabilization
 
 
 def compute_temporal_mean_var(movie):
@@ -23,39 +25,58 @@ def ground_truth_pixelwise(dir_name, files, box=None, plt_regression=True):
     fig, axes_scatter = plt.subplots(1, 1, figsize=(8, 4))
     means_means = []
     variances_means = []
-    for k, fn in enumerate(reversed(files)):
+    means_all = []
+    variances_all = []
+    for k, fn in enumerate(files):
+        # if k != 0:
+        #     continue
         movie = tifffile.imread(dir_name + fn)
 
         if box is not None:
             movie = movie[:, box[0]:box[1]:2, box[2]:box[3]]
         else:
             movie = movie[:, ::2, :]
+        movie = np.maximum(movie, 1000)
 
         means, variances = compute_temporal_mean_var(movie)
 
         axes_scatter.scatter(means, variances, marker='.',
-                             alpha=1, color=colors[-k-1], edgecolors='none',
-                             label='Movie {}'.format(k+1))
+                             alpha=1, color=colors[k], edgecolors='none',
+                             label='Movie {}'.format(k+1), zorder=10-k)
+
+        # mod = HuberRegressor(alpha=0, fit_intercept=True)
+        mod = LinearRegression(fit_intercept=True)
+        mod.fit(means[:, np.newaxis], variances)
+        x = np.array([means.min(), means.max()])[:, np.newaxis]
+        axes_scatter.plot(x, mod.predict(x), 'k:', zorder=11)
+
 
         means_means.append(means.mean())
         variances_means.append(variances.mean())
 
-    means_means = list(reversed(means_means))
-    variances_means = list(reversed(variances_means))
+        means_all.append(means)
+        variances_all.append(variances)
 
     if plt_regression:
         mod = LinearRegression()
         mod.fit(np.array(means_means)[:, np.newaxis],
-                np.array(variances_means)[:, np.newaxis])
+                np.array(variances_means))
         x = np.array([1200, 2700])[:, np.newaxis]
-        axes_scatter.plot(x, mod.predict(x), 'k-')
+        axes_scatter.plot(x, mod.predict(x), 'k-', zorder=11)
+        print('Linear fit:', mod.coef_[0], mod.intercept_)
+
+        means_all = np.hstack(means_all)
+        variances_all = np.hstack(variances_all)
+        mod.fit(np.array(means_all)[:, np.newaxis],
+                np.array(variances_all)[:, np.newaxis])
+        print('Linear fit:', mod.coef_[0], mod.intercept_)
 
     for k, (mean, variance) in enumerate(zip(means_means, variances_means)):
         axes_scatter.scatter(mean, variance, marker='+',
                              s=1000, linewidth=2, color=colors_means[k],
                              edgecolor='k', zorder=1000)
 
-    axes_scatter.yaxis.set_major_formatter(plt_tick.FormatStrFormatter('%.0e'))
+    axes_scatter.yaxis.set_major_formatter(plt_tick.FormatStrFormatter('%.1e'))
 
     axes_scatter.set_xlabel('Mean')
     axes_scatter.set_ylabel('Variance')
@@ -79,29 +100,28 @@ def ground_truth_pixelwise(dir_name, files, box=None, plt_regression=True):
 
 
 def ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
-                           box=None):
+                           box=None, block_size=8, stride=8):
     colors = sns.color_palette('Pastel1', len(files))
     colors_means = sns.color_palette('Set1', len(files))
 
     fig, axes = plt.subplots(1, 1, figsize=(8, 4))
     for k, fn in enumerate(files):
         movie = tifffile.imread(dir_name + fn)
-        if box is not None:
-            movie = movie[:, box[0]:box[1]:2, box[2]:box[3]]
-        else:
+        if box is None:
             movie = movie[:, ::2, :]
+        else:
+            movie = movie[:, box[0]:box[1]:2, box[2]:box[3]]
 
         means = []
         variances = []
-        for i in range(0, len(movie)):
-            means_i, vars_i = compute_blocks_mean_var(movie[i],
-                                                      block_size=8, stride=8)
+        for i in range(0, len(movie), 100):
+            blocks_i = im2col(movie[i], block_size, stride)
+            means_i, vars_i = compute_mean_var(blocks_i)
             means.append(means_i)
             variances.append(vars_i)
 
         means = np.hstack(means)
         variances = np.hstack(variances)
-        print(means.shape, variances.shape)
 
         axes.scatter(means, variances, marker='.', alpha=1, color=colors[k],
                      edgecolors='none')
@@ -115,7 +135,7 @@ def ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
                      edgecolor=colors_means[k], zorder=1000)
 
     axes.yaxis.set_major_formatter(
-        plt_tick.FormatStrFormatter('%.0e'))
+        plt_tick.FormatStrFormatter('%.1e'))
 
     axes.set_xlabel('Mean')
     axes.set_ylabel('Variance')
@@ -142,6 +162,76 @@ def ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
     fig.tight_layout(rect=(0, 0, 0.7, 1))
 
 
+def ground_truth_estimate_vst(dir_name, files, box=None, block_size=8,
+                              stride=8):
+    variances_all_single_image = []
+    variances_all_multi_image = []
+
+    for k, fn in enumerate(files):
+        print(k)
+
+        movie = tifffile.imread(dir_name + fn)
+        if box is None:
+            movie = movie[:, ::2, :]
+        else:
+            movie = movie[:, box[0]:box[1]:2, box[2]:box[3]]
+
+        img = movie.mean(axis=0)
+        img_noisy = movie[0]
+
+        # single image estimation
+        res = estimate_sigma_alpha_image(img_noisy, block_size=block_size,
+                                         stride=stride, perc_kept=(0, 1))
+
+        variances = []
+        for i in range(len(movie)):
+            img_noisy = movie[i]
+            v = assess_variance_stabilization(img, img_noisy, res.sigma,
+                                              res.alpha, verbose=False,
+                                              correct_noiseless=False)
+            variances.append(v)
+        variances = np.array(variances)
+        print('variance AVG', variances.mean())
+        variances_all_single_image.append(variances)
+
+        # # multi-image estimation
+        # blocks = []
+        # for i in range(0, len(movie), 400):
+        #     blocks_i = im2col(movie[i], block_size, stride)
+        #     blocks.append(blocks_i)
+        # blocks = np.vstack(blocks)
+        # print(blocks.shape)
+        #
+        # res = estimate_sigma_alpha_blocks(blocks, block_size=block_size,
+        #                                   stride=stride, perc_kept=(0, 1))
+        #
+        # variances = []
+        # for i in range(len(movie)):
+        #     img_noisy = movie[i]
+        #     v = assess_variance_stabilization(img, img_noisy, res.sigma,
+        #                                       res.alpha, verbose=False,
+        #                                       correct_noiseless=False)
+        #     variances.append(v)
+        # variances = np.array(variances)
+        # print('variance AVG', variances.mean())
+        # variances_all_multi_image.append(variances)
+
+    with sns.axes_style("white"):
+        plt.figure()
+        sns.violinplot(data=variances_all_single_image)
+        plt.xticks(np.arange(len(files)), ['Movie {}'.format(k+1)
+                                           for k in range(len(files))])
+        plt.ylabel('Stabilized variance')
+        plt.title('Single-image estimation')
+
+        plt.figure()
+        sns.violinplot(data=variances_all_multi_image)
+        plt.xticks(np.arange(len(files)), ['Movie {}'.format(k+1)
+                                           for k in range(len(files))])
+        plt.ylabel('Stabilized variance')
+        plt.title('Multi-image estimation')
+
+
 def movie_plot(dir_name, files, box=None):
     fig = plt.figure(figsize=(8, 4))
     grid = ImageGrid(fig, 111,
@@ -153,10 +243,12 @@ def movie_plot(dir_name, files, box=None):
 
     for k, fn in enumerate(files):
         movie = tifffile.imread(dir_name + fn)
-        if box is not None:
-            movie = movie[:, box[0]:box[1]:2, box[2]:box[3]]
-        else:
+        if box is None:
             movie = movie[:, ::2, :]
+        else:
+            movie = movie[:, box[0]:box[1]:2, box[2]:box[3]]
+
+        print('Movie min:', movie.min(), 'max:', movie.max())
 
         grid.axes_row[0][k].imshow(movie[0], cmap='viridis')
         grid.axes_row[0][k].set_title('Movie {}'.format(k+1))
@@ -205,20 +297,21 @@ def main():
     #                               axes=axes_transversal[:, k])
     # plt.suptitle(title)
 
-    movie_plot(dir_name, files)
+    # movie_plot(dir_name, files)
 
-    # box = (0, 512, 0, 100)
+    box = [50, -50, 50, -50]
     # movie_plot(dir_name, files, box)
-    # res = ground_truth_pixelwise(dir_name, files, box=box, plt_regression=False)
+    # res = ground_truth_pixelwise(dir_name, files, box=box, plt_regression=True)
     # gt_means_means, gt_vars_means = res
     # ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
-    #                        box=box, plt_regression=False)
+    #                        box=box)
+    ground_truth_estimate_vst(dir_name, files, box=box)
 
-    box = (210, 300, 210, 300)
-    res = ground_truth_pixelwise(dir_name, files, box=box, plt_regression=True)
-    gt_means_means, gt_vars_means = res
-    ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
-                           box=box)
+    # box = (210, 300, 210, 300)
+    # res = ground_truth_pixelwise(dir_name, files, box=box, plt_regression=True)
+    # gt_means_means, gt_vars_means = res
+    # ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
+    #                        box=box)
 
 
 if __name__ == '__main__':

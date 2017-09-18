@@ -2,9 +2,9 @@ import numpy as np
 from scipy import stats
 
 
-def poisson_gaussian_noise(arr, sigma, alpha):
+def poisson_gaussian_noise(arr, sigma, alpha, mu=0):
     p = stats.poisson.rvs(arr)
-    n = stats.norm.rvs(scale=sigma, size=arr.shape)
+    n = stats.norm.rvs(scale=sigma, loc=mu, size=arr.shape)
     return alpha * p + n
 
 

@@ -1,267 +1,276 @@
 from collections import namedtuple
 import h5py
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn.apionly as sns
 from skimage import draw, measure
+from sklearn.neighbors.kde import KernelDensity
 import tifffile
 import timeit
 import houghvst.estimation.estimation as est
+from houghvst.estimation.gat import compute_gat
+from houghvst.estimation.regions import im2col
 from houghvst.estimation.utils import poisson_gaussian_noise
-from houghvst.tests.measures import compare_variance_stabilization
+from houghvst.tests.measures import compare_variance_stabilization,\
+    compute_temporal_mean_var
 from houghvst.tests.plotting import plot_vst_accumulator_space
 
 
-GroundTruth = namedtuple('GroundTruth', ['movie', 'alpha', 'sigma'])
+GroundTruth = namedtuple('GroundTruth', ['movie', 'alpha', 'sigma_sq'])
 
 
-def load_toy_examples():
-    np.random.seed(1)
-
-    # movie = np.array([128. + np.zeros((512, 512))])
-    # movie[:, :256, :] = 128
-    # movie[:, 256:, :] = 512
-
-    movie = np.array([np.repeat(np.arange(0., 512.)[:, np.newaxis],
+def load_toy_example():
+    movie = np.array([np.repeat(np.arange(50., 562.)[:, np.newaxis],
                                 512, axis=1)])
-    movie = np.maximum(movie - 100, 0)
-    movie /= 100
+    movie = np.repeat(movie, 100, axis=0)
     for st in zip(np.random.randint(0, 492, size=50),
                   np.random.randint(0, 492, size=50)):
-        rr, cc = draw.circle(st[0], st[1], 10)
-        movie[:, rr, cc] += 500
-    movie /= 100
+        rr, cc = draw.circle(st[0], st[1], 20)
+        movie[:, rr, cc] += 100
+    movie /= 5
     movie += 20
     print(movie.min(), movie.max())
 
     sigma_gt = 30
-    alpha_gt = 100
+    alpha_gt = 500
     movie_noisy = poisson_gaussian_noise(movie, sigma_gt, alpha_gt)
     print(movie_noisy.min(), movie_noisy.max())
     # movie_noisy = np.maximum(movie_noisy, 0)
     # movie_noisy = np.minimum(movie_noisy, 8000)
     print(movie_noisy.min(), movie_noisy.max())
 
-    print('PSNR', measure.compare_psnr(movie, movie_noisy,
-                                       data_range=movie.max()))
+    print('PSNR', measure.compare_psnr(alpha_gt * movie, movie_noisy,
+                                       data_range=alpha_gt * movie.max()))
 
-    return movie_noisy, GroundTruth(movie, alpha_gt, sigma_gt)
+    gt_movie_gat = compute_gat(movie_noisy, sigma_gt ** 2, alpha=alpha_gt)
+    _, temp_vars = compute_temporal_mean_var(gt_movie_gat)
+    print('Temporal variance',
+          'MEAN={}, STD={}'.format(temp_vars.mean(),
+                                   temp_vars.std(ddof=1)))
+
+    return movie_noisy, GroundTruth(movie, alpha_gt, sigma_gt ** 2)
 
 
-def load_calcium_examples():
-    movie = tifffile.imread('../../images/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00012.tif')
-    # movie = tifffile.imread('images/demoMovie.tif')
-    # f = h5py.File('images/quietBlock.h5_at', 'r')
-    # movie = np.array(f['quietBlock'], dtype=np.float32)[:10]
+def load_calcium_examples(select):
+    if select == 'k53':
+        s = '../../images/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00012.tif'
+        movie = tifffile.imread(s)
+        movie = movie[:, 100:-100, 100:-100].astype(np.float)
+    elif select == 'demo':
+        movie = tifffile.imread('../../images/demoMovie.tif')
+        movie = movie.astype(np.float)
+    elif select == 'quiet':
+        f = h5py.File('../../images/quietBlock.h5_at', 'r')
+        movie = np.array(f['quietBlock'], dtype=np.float)[:1000]
 
-    print(movie.shape, movie.max())
     return movie, None
 
 
-def trimming_effect(img, gt=None):
-    stride_list = [1, 8]
-    perc_kept_list = [(0, 1), (0.1, 0.9)]
-    perc_kept_titles = ['No trimming', 'Trimming']
+def test_vst_estimation_movie(movie, idx=None, gt=None):
+    if idx is None:
+        movie_train = movie[::200]
+    else:
+        movie_train = movie[idx]
 
-    scatter_cmap = ['#a6cee3', '#fb9a99']
-    line_cmap = ['#1f78b4', '#e31a1c']
-    line_style_list = ['-', '--']
+    block_size = 8
+    stride = 8
 
-    fig, axes = plt.subplots(1, len(perc_kept_list) + 1, figsize=(24, 8))
+    t = timeit.default_timer()
+    blocks_train = []
+    for img in movie_train:
+        blocks_train.append(im2col(img, block_size, stride))
+    blocks_train = np.vstack(blocks_train)
 
-    axes[0].imshow(img)
-    axes[0].axis('off')
+    sigma_sq_init, alpha_init = est.initial_estimate_sigma_alpha(blocks_train)
+    print('\tTime', timeit.default_timer() - t)
+    print('\talpha = {}; sigma^2 = {}'.format(alpha_init, sigma_sq_init))
 
-    for k, perc_kept in enumerate(perc_kept_list):
-        print('Trim = {}'.format(perc_kept))
+    t = timeit.default_timer()
+    res = est.estimate_vst_movie(movie_train, stride=stride)
+    print('\tTime', timeit.default_timer() - t)
 
-        plt_handle_labels = []
-        for i, stride in enumerate(stride_list):
-            scatter_color = scatter_cmap[i]
-            line_color = line_cmap[i]
-            line_style = line_style_list[i]
-            label = 'stride={}'.format(stride)
-            print(label)
+    blocks = []
+    for img in movie:
+        blocks.append(im2col(img, block_size, stride))
+    blocks = np.vstack(blocks)
+    plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
+                        res, 0, gt=gt)
 
-            t = timeit.default_timer()
-            means, variances = est.compute_blocks_mean_var(img, stride=stride,
-                                                           perc_kept=perc_kept)
-            sigma_est, alpha_est = est.regress_sigma_alpha(means, variances)
-            print('\tTime', timeit.default_timer() - t)
-            print(
-                '\talpha = {}; sigma = {}'.format(alpha_est, sigma_est))
+    # movie_gat = compute_gat(movie, sigma_sq_init, alpha_init)
+    tifffile.imsave('k53_movie.tif', movie.astype(np.float32))
 
-            sca_h = axes[k + 1].scatter(means, variances, marker='.', alpha=0.5,
-                                        color=scatter_color, edgecolors='none')
-            plt_handle_labels.append((sca_h, 'Patches ({})'.format(label)))
-
-            x = np.array([means.min(), means.max()])
-            plt_h1 = axes[k + 1].plot(x, alpha_est * x + sigma_est ** 2,
-                                      color=line_color, linestyle=line_style,
-                                      linewidth=2)
-            plt_handle_labels.append((plt_h1[0], 'Estimation ({})'.format(label)))
-
-            axes[k + 1].set_title(perc_kept_titles[k])
-
-            if gt is not None and i == len(stride_list) - 1:
-                plt_h2 = axes[k + 1].plot(x, gt.alpha * x + gt.sigma ** 2,
-                                         color='k')
-                axes[k + 1].fill_between(x, 0.9 * gt.alpha * x + gt.sigma ** 2,
-                                         1.1 * gt.alpha * x + gt.sigma ** 2,
-                                         facecolor='k', alpha=0.2)
-                plt_h3 = axes[k + 1].fill(np.NaN, np.NaN, facecolor='k',
-                                          alpha=0.2)
-                plt_handle_labels.append(((plt_h2[0], plt_h3[0]),
-                                          r'Ground truth ($\pm 10\%$)'))
-
-            axes[k + 1].set_xlabel('Block means')
-            axes[k + 1].set_ylabel('Block variances')
-
-            lgnd = axes[k + 1].legend(*list(zip(*plt_handle_labels)),
-                                      loc='upper left')
-            for h in lgnd.legendHandles:
-                h._sizes = [200]
+    movie_gat = compute_gat(movie, res.sigma_sq, alpha=res.alpha)
+    tifffile.imsave('k53_movie_gat.tif', movie_gat.astype(np.float32))
 
 
-def frame_test(img, gt=None):
-    stride_list = [8]
-    perc_kept = (0, 1)
+def test_vst_estimation_frame(movie, idx=0, gt=None):
+    img = movie[idx]
 
-    scatter_cmap = ['#a6cee3', '#fb9a99']
-    line_cmap = ['#1f78b4', '#e31a1c']
-    line_style_list = ['-', '-.']
+    block_size = 8
+    stride = 8
 
-    fig, axes = plt.subplots(1, 3, figsize=(24, 8))
+    t = timeit.default_timer()
+    blocks = im2col(img, block_size, stride)
+    sigma_sq_init, alpha_init = est.initial_estimate_sigma_alpha(blocks)
+    print('\tTime', timeit.default_timer() - t)
+    print('\talpha = {}; sigma^2 = {}'.format(alpha_init, sigma_sq_init))
 
-    axes[0].imshow(img)
-    axes[0].axis('off')
+    t = timeit.default_timer()
+    res = est.estimate_vst_image(img, stride=stride)
+    print('\tTime', timeit.default_timer() - t)
 
-    for i, stride in enumerate(stride_list):
-        scatter_color = scatter_cmap[i]
-        line_color = line_cmap[i]
-        line_style = line_style_list[i]
-        label = 'stride={}'.format(stride)
-        print(label)
+    plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
+                        res, idx, gt=gt)
 
-        t = timeit.default_timer()
-        means, variances = est.compute_blocks_mean_var(img, stride=stride)
-        sigma_est, alpha_est = est.regress_sigma_alpha(means, variances)
-        print('\tTime', timeit.default_timer() - t)
-        print('\talpha = {}; sigma = {}'.format(alpha_est, sigma_est))
 
-        if gt is not None:
-            compare_variance_stabilization(gt.movie, img, gt.sigma, gt.alpha,
-                                           sigma_est, alpha_est)
+def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
+                        res, idx, gt=None):
+    img = movie[idx]
+    if gt is not None:
+        img_gt = gt.movie[idx]
 
-        t = timeit.default_timer()
-        res = est.estimate_sigma_alpha_image(img, stride=stride,
-                                             perc_kept=perc_kept)
-        print('\tTime', timeit.default_timer() - t)
+    means, variances = est.compute_mean_var(blocks)
 
-        if gt is not None:
-            compare_variance_stabilization(gt.movie, img, gt.sigma, gt.alpha,
-                                           res.sigma, res.alpha)
+    if gt is not None:
+        movie_gat = compute_gat(movie, sigma_sq_init, alpha=alpha_init)
+        _, temp_vars = compute_temporal_mean_var(movie_gat)
+        print('---> Temporal variance',
+              'MEAN={}, STD={}'.format(temp_vars.mean(),
+                                       temp_vars.std(ddof=1)))
 
-        axes[1].scatter(means, variances, marker='.', alpha=0.5,
-                        color=scatter_color, edgecolors='none',
-                        label='Patches ({})'.format(label))
+        compare_variance_stabilization(img_gt, img, gt.sigma_sq, gt.alpha,
+                                       sigma_sq_init, alpha_init)
+
+        gt_movie_gat = compute_gat(movie, res.sigma_sq, alpha=res.alpha)
+        _, temp_vars = compute_temporal_mean_var(gt_movie_gat)
+        print('---> Temporal variance',
+              'MEAN={}, STD={}'.format(temp_vars.mean(),
+                                       temp_vars.std(ddof=1)))
+
+        compare_variance_stabilization(img_gt, img, gt.sigma_sq, gt.alpha,
+                                       res.sigma_sq, res.alpha)
+
+    line_cmap = ['#377eb8', '#e41a1c']
+
+    with sns.axes_style('white'):
+        if gt is None:
+            plt.figure(figsize=(24, 5))
+            gs = gridspec.GridSpec(1, 5, width_ratios=[2, 2, 3, 3, 3],
+                                   left=0.02, right=0.98, wspace=0.3)
+
+            axes0 = plt.subplot(gs[0, 0])
+            axes1 = plt.subplot(gs[0, 1])
+            axes2 = plt.subplot(gs[0, 2])
+            axes3 = plt.subplot(gs[0, 3])
+            axes4 = plt.subplot(gs[0, 4])
+
+            axes0.imshow(img, cmap='viridis')
+            axes0.axis('off')
+            axes0.set_title('Input image')
+        else:
+            plt.figure(figsize=(24, 5))
+            gs = gridspec.GridSpec(2, 5, width_ratios=[2, 2, 3, 3, 3],
+                                   left=0.02, right=0.98, wspace=0.3)
+
+            axes00 = plt.subplot(gs[0, 0])
+            axes10 = plt.subplot(gs[1, 0])
+            axes1 = plt.subplot(gs[:, 1])
+            axes2 = plt.subplot(gs[:, 2])
+            axes3 = plt.subplot(gs[:, 3])
+            axes4 = plt.subplot(gs[:, 4])
+
+            axes00.imshow(img_gt, cmap='viridis')
+            axes00.axis('off')
+            axes00.set_title('Noiseless image')
+            axes10.imshow(img, cmap='viridis')
+            axes10.axis('off')
+            axes10.set_title('Noisy image')
+
+        scatter_color = '#a6cee3'
+
+        axes1.scatter(means, variances, marker='.', alpha=0.5,
+                      color=scatter_color, edgecolors='none',
+                      label='Patch')
 
         x = np.array([[means.min()], [means.max()]])
-        axes[1].plot(x, alpha_est * x + sigma_est ** 2,
-                     color=line_color, linestyle=line_style, linewidth=2,
-                     label='Initial estimation ({})'.format(label))
+        axes1.plot(x, alpha_init * x + sigma_sq_init, color=line_cmap[0],
+                   label='Initial estimation')
+
+        axes1.plot(x, res.alpha * x + res.sigma_sq, color=line_cmap[1],
+                   label='Refined estimation')
 
         if gt is not None:
-            axes[1].plot(x, res.alpha * x + res.sigma ** 2, color='g',
-                         label='Refined estimation ({})'.format(label))
+            axes1.plot(x, gt.alpha * x + gt.sigma_sq, color='k',
+                       label='Ground truth')
 
-            axes[1].plot(x, gt.alpha * x + gt.sigma ** 2, color='k',
-                         label='Ground truth')
+        axes1.set_xlabel('Mean')
+        axes1.set_ylabel('Variance')
 
-        axes[1].set_xlabel('Block means')
-        axes[1].set_ylabel('Block variances')
-
-        lgnd = axes[1].legend()
+        lgnd = axes1.legend()
         for h in lgnd.legendHandles:
             h._sizes = [200]
 
-        plot_vst_accumulator_space(res.acc_space, ax=axes[2])
+        xdiff = np.percentile(means, 99) - means.min()
+        ydiff = np.percentile(variances, 99) - variances.min()
+        axes1.set_xlim((means.min() - 0.1 * xdiff,
+                        np.percentile(means, 99) + 0.1 * xdiff))
+        axes1.set_ylim((variances.min() - 0.1 * ydiff,
+                        np.percentile(variances, 99) + 0.1 * ydiff))
 
+        axes1.set_title('Patch mean vs patch variance')
 
-def stability_test(movie):
-    stride = 8
-    perc_kept = (0.1, 0.9)
+        plot_vst_accumulator_space(res.acc_space_init, ax=axes2,
+                                   plot_focus=True)
+        axes2.set_title('Coarse accumulator space')
 
-    sigmas_initial = []
-    sigmas_refined = []
-    alphas_initial = []
-    alphas_refined = []
+        plot_vst_accumulator_space(res.acc_space, ax=axes3,
+                                   plot_estimates=True)
+        axes3.set_title('Focused accumulator space')
 
-    for idx_img, img in enumerate(movie):
-        print('Frame number {}/{}'.format(idx_img, len(movie)))
-        t = timeit.default_timer()
-        means, variances = est.compute_blocks_mean_var(img, stride=stride,
-                                                       perc_kept=perc_kept)
-        sigma_est, alpha_est = est.regress_sigma_alpha(means, variances)
-        print('\tTime', timeit.default_timer() - t)
-        print('\talpha = {}; sigma = {}'.format(alpha_est, sigma_est))
+        blocks_gat = compute_gat(blocks, sigma_sq_init, alpha=alpha_init)
+        _, variances_init = est.compute_mean_var(blocks_gat)
 
-        t = timeit.default_timer()
-        sigma_tuned, alpha_tuned, _ = est.estimate_sigma_alpha_image(img,
-                                                                     stride=stride,
-                                                                     perc_kept=perc_kept)
-        print('\tTime', timeit.default_timer() - t)
+        blocks_gat = compute_gat(blocks, res.sigma_sq, alpha=res.alpha)
+        _, variances = est.compute_mean_var(blocks_gat)
 
-        sigmas_initial.append(sigma_est)
-        sigmas_refined.append(sigma_tuned)
-        alphas_initial.append(alpha_est)
-        alphas_refined.append(alpha_tuned)
+        data_range = (np.minimum(variances_init.min(), variances.min()),
+                      np.maximum(variances_init.max(), variances.max()))
+        samples = np.linspace(*data_range, num=1000)
 
-    fig, ax1 = plt.subplots()
-    plt_h1 = ax1.plot(sigmas_initial, color='#a6cee3')
-    plt_h2 = ax1.plot(sigmas_refined, color='#1f78b4')
-    ax1.set_ylabel(r'$\sigma$', color='#1f78b4')
-    ax1.tick_params('y', colors='#1f78b4')
-    ax2 = ax1.twinx()
-    plt_h3 = ax2.plot(alphas_initial, color='#fb9a99')
-    plt_h4 = ax2.plot(alphas_refined, color='#e31a1c')
-    ax2.set_ylabel(r'$\alpha$', color='#e31a1c')
-    ax2.tick_params('y', colors='#e31a1c')
+        kde = KernelDensity(kernel='gaussian', bandwidth=0.05)
+        probas_both = []
+        for vs, color, label in zip([variances_init, variances], line_cmap,
+                                    ['Initial', 'Refined']):
+            kde.fit(vs[:, np.newaxis])
+            probas = np.exp(kde.score_samples(samples[:, np.newaxis]))
+            probas /= probas.sum()
+            probas_both.append(probas)
+            axes4.fill_between(samples, probas, color=color, alpha=0.3,
+                               label=label + ' estimation')
+            loc = np.argmax(probas)
+            axes4.plot([samples[loc], samples[loc]], [0, probas[loc]], '-',
+                       color=color)
+            axes4.plot([1, 1], [0, probas[loc] * 1.05], 'k:')
 
-    plt.legend([plt_h1[0], plt_h2[0], plt_h3[0], plt_h4[0]],
-               [r'Initial $\sigma$', r'Refined $\sigma$',
-                r'Initial $\alpha$', r'Refined $\alpha$'])
+        probas_both = np.maximum(*probas_both)
+        idx_nnz = np.where(probas_both > 1e-4)[0]
+        axes4.set_xlim(samples[0], samples[idx_nnz[-1]])
 
-
-def apply_vst(movie, alpha, sigma):
-    import houghvst.estimation.gat as gat
-    movie_gat = gat.compute(movie, sigma, alpha=alpha)
-    tifffile.imsave('result1.tif', movie_gat.astype(np.float32))
-
-    plt.figure()
-    plt.subplot(121)
-    plt.imshow(movie[0, :, :])
-    plt.subplot(122)
-    plt.imshow(movie_gat[0, :, :])
-
-    plt.figure()
-    plt.subplot(121)
-    plt.imshow(movie[1775, :, :])
-    plt.subplot(122)
-    plt.imshow(movie_gat[1775, :, :])
+        axes4.legend()
+        axes4.set_xlabel('Patch variance')
+        axes4.set_title('Patch variance density')
 
 
 def main():
-    # movie_noisy, gt = load_toy_examples()
-    movie_noisy, gt = load_calcium_examples()
+    movie_noisy, gt = load_toy_example()
+    test_vst_estimation_frame(movie_noisy, idx=0, gt=gt)
 
-    # trimming_effect(movie_noisy[0], gt=gt)
-
-    # idx_img = 1775
-    idx_img = 0
-    frame_test(movie_noisy[idx_img], gt=gt)
-    # apply_vst(movie_noisy, 120.2286364943876, 171.09473684210528)
-
-    # stability_test(movie_noisy[::100])
+    for name in ['k53', 'demo', 'quiet']:
+        movie_noisy, gt = load_calcium_examples(name)
+        movie_noisy -= movie_noisy.mean()
+        # test_vst_estimation_frame(movie_noisy, idx=0, gt=gt)
+        test_vst_estimation_movie(movie_noisy, gt=gt)
 
 
 if __name__ == '__main__':

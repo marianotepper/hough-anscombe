@@ -97,12 +97,6 @@ def test_vst_estimation_movie(movie, idx=None, gt=None):
     plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
                         res, 0, gt=gt)
 
-    # movie_gat = compute_gat(movie, sigma_sq_init, alpha_init)
-    tifffile.imsave('k53_movie.tif', movie.astype(np.float32))
-
-    movie_gat = compute_gat(movie, res.sigma_sq, alpha=res.alpha)
-    tifffile.imsave('k53_movie_gat.tif', movie_gat.astype(np.float32))
-
 
 def test_vst_estimation_frame(movie, idx=0, gt=None):
     img = movie[idx]

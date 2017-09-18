@@ -15,8 +15,8 @@ def assess_variance_stabilization(img, img_noisy, sigma, alpha,
     if correct_noiseless:
         img = alpha * img
 
-    img_gat = gat.compute(img, sigma, alpha=alpha)
-    img_noisy_gat = gat.compute(img_noisy, sigma, alpha=alpha)
+    img_gat = gat.compute_gat(img, sigma, alpha=alpha)
+    img_noisy_gat = gat.compute_gat(img_noisy, sigma, alpha=alpha)
     diff = img_gat - img_noisy_gat
 
     variance = np.var(diff, ddof=1)
@@ -25,3 +25,9 @@ def assess_variance_stabilization(img, img_noisy, sigma, alpha,
         # print(np.var(diff, ddof=1, axis=1).min(),
         #       np.var(diff, ddof=1, axis=1).max())
     return variance
+
+
+def compute_temporal_mean_var(movie):
+    means = np.mean(movie, axis=0)
+    variances = np.var(movie, axis=0, ddof=1)
+    return means, variances

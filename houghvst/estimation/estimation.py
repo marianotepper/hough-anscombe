@@ -103,11 +103,8 @@ def estimate_vst_blocks(blocks):
                               num=100)
     sigma_sq_mid, alpha_mid, acc_init = hough_estimation(blocks, sigma_sq_range,
                                                         alpha_range)
-    print('\talpha = {}; sigma^2 = {}'.format(alpha_mid, sigma_sq_mid))
+    print('\tmid alpha = {}; sigma^2 = {}'.format(alpha_mid, sigma_sq_mid))
 
-    # sigma_sq_final = sigma_sq_mid
-    # alpha_final = alpha_mid
-    # acc = acc_init
     diff_s /= 10
     diff_a /= 4
     sigma_sq_range = np.linspace(sigma_sq_mid - diff_s, sigma_sq_mid + diff_s,

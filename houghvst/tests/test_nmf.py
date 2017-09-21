@@ -127,7 +127,7 @@ def process(params):
             peaks = np.sort(peaks[peaks_inner])
 
             img_locs = np.linspace(200, len(movie) - 200, num=len(peaks))
-            print(img_locs)
+
             for k, p in enumerate(peaks):
                 imagebox = OffsetImage(movie[p], zoom=0.7, cmap='viridis')
                 imagebox.image.axes = ax

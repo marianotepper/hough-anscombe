@@ -38,9 +38,10 @@ def ground_truth_pixelwise(dir_name, files, box=None, plt_regression=True):
             means_means.append(means.mean())
             variances_means.append(variances.mean())
 
-            axes_scatter.scatter(means, variances, marker='.',
-                                 alpha=1, color=colors[k], edgecolors='none',
-                                 label='Movie {}'.format(k + 1), zorder=10 - k)
+            axes_scatter.plot(means, variances, '.', alpha=0.7,
+                              color=colors[k], markeredgecolor='none',
+                              label='Movie {}'.format(k + 1), zorder=10 - k,
+                              rasterized=True)
 
         if plt_regression:
             mod = LinearRegression()
@@ -106,8 +107,8 @@ def ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
             means = np.hstack(means)
             variances = np.hstack(variances)
 
-            axes.scatter(means, variances, marker='.', alpha=1, color=colors[k],
-                         zorder=10 - k, edgecolors='none')
+            axes.plot(means, variances, '.', alpha=0.7, color=colors[k],
+                      markeredgecolor='none', zorder=10 - k, rasterized=True)
 
             axes.scatter(means.mean(), variances.mean(), marker='x', s=1000,
                          linewidth=2, color=colors_means[k],
@@ -152,8 +153,6 @@ def ground_truth_estimate_vst(dir_name, files, box=None, block_size=8,
     variances_all_multi_image = []
 
     for k, fn in enumerate(files):
-        # if k != 4:
-        #     continue
         print(k)
 
         movie = tifffile.imread(dir_name + fn)
@@ -275,7 +274,7 @@ def ground_truth_estimate_vst(dir_name, files, box=None, block_size=8,
             facecolor=vio_multi['bodies'][0].get_facecolor().flatten(),
             edgecolor=vio_multi['cbars'].get_edgecolor().flatten(),
             label='Multi-image estimation')
-        plt.legend(handles=[p_single, p_multi], loc='lower right')
+        plt.legend(handles=[p_single, p_multi], loc='upper right')
         plt.savefig('ground_truth_single-multi.pdf')
 
 
@@ -333,6 +332,8 @@ def main():
     dir_name = '/Users/mtepper/Dropbox (Simons Foundation)/Noise-data-Lloyd/'
     files = ['20170718_FluoroSlide_t-0{:02d}_Cycle00001_Ch1.tif'.format(k)
              for k in range(6, 11)]
+
+    movie_plot(dir_name, files)
 
     box = [50, -50, 50, -50]
     ground_truth_estimate_vst(dir_name, files, box=box)

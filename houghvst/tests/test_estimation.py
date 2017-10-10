@@ -1,4 +1,5 @@
 from collections import namedtuple
+import glob
 import h5py
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
@@ -56,6 +57,7 @@ def load_calcium_examples(select):
     if select == 'k53':
         s = '../../images/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00012.tif'
         movie = tifffile.imread(s)
+        # crop dark corners:
         movie = movie[:, 100:-100, 100:-100].astype(np.float)
     elif select == 'demo':
         movie = tifffile.imread('../../images/demoMovie.tif')
@@ -63,11 +65,23 @@ def load_calcium_examples(select):
     elif select == 'quiet':
         f = h5py.File('../../images/quietBlock.h5_at', 'r')
         movie = np.array(f['quietBlock'], dtype=np.float)[:1000]
+    elif 'neurofinder' in select:
+        dn = '../../images/' + select + '/images'
+        movie = [tifffile.imread(fn) for fn in glob.iglob(dn + '/*.tif*')]
+        movie = np.stack(movie, axis=0)
+        # crop dark corners:
+        movie = movie[:, 100:-100, 100:-100].astype(np.float)
+        print(movie.shape)
+    elif 'Akerboom2012' in select or 'Akerboom2012' in select:
+        dn = '../../images/cai-1/' + select
+        movie = [tifffile.imread(fn) for fn in glob.iglob(dn + '/*.tif*')][0]
+        movie = movie[::2].astype(np.float)
+        print(movie.shape)
 
     return movie, None
 
 
-def test_vst_estimation_movie(movie, idx=None, gt=None):
+def test_vst_estimation_movie(movie, idx=None, gt=None, filename=None):
     if idx is None:
         movie_train = movie[::200]
     else:
@@ -95,10 +109,10 @@ def test_vst_estimation_movie(movie, idx=None, gt=None):
         blocks.append(im2col(img, block_size, stride))
     blocks = np.vstack(blocks)
     plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
-                        res, 0, gt=gt)
+                        res, 0, gt=gt, filename=filename)
 
 
-def test_vst_estimation_frame(movie, idx=0, gt=None):
+def test_vst_estimation_frame(movie, idx=0, gt=None, filename=None):
     img = movie[idx]
 
     block_size = 8
@@ -115,11 +129,11 @@ def test_vst_estimation_frame(movie, idx=0, gt=None):
     print('\tTime', timeit.default_timer() - t)
 
     plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
-                        res, idx, gt=gt)
+                        res, idx, gt=gt, filename=filename)
 
 
 def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
-                        res, idx, gt=None):
+                        res, idx, gt=None, filename=None):
     img = movie[idx]
     if gt is not None:
         img_gt = gt.movie[idx]
@@ -183,9 +197,10 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
 
         scatter_color = '#a6cee3'
 
-        axes1.scatter(means, variances, marker='.', alpha=0.5,
-                      color=scatter_color, edgecolors='none',
-                      label='Patch')
+        # Using rasterized=True drastically reduces the file size
+        axes1.plot(means, variances, '.', alpha=0.2,
+                   color=scatter_color, markeredgecolor='none', rasterized=True,
+                   label='Patch')
 
         x = np.array([[means.min()], [means.max()]])
         axes1.plot(x, alpha_init * x + sigma_sq_init, color=line_cmap[0],
@@ -255,16 +270,38 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
         axes4.set_xlabel('Patch variance')
         axes4.set_title('Patch variance density')
 
+        if filename is not None:
+            if '/raw_data/' in filename:
+                filename = filename.replace('/raw_data/', '_')
+            plt.savefig(filename + '_estimation.pdf')
+
 
 def main():
-    movie_noisy, gt = load_toy_example()
-    test_vst_estimation_frame(movie_noisy, idx=0, gt=gt)
+    # movie_noisy, gt = load_toy_example()
+    # test_vst_estimation_frame(movie_noisy, idx=0, gt=gt)
 
-    for name in ['k53', 'demo', 'quiet']:
+    tests = [
+        'k53',
+        'demo',
+        'quiet',
+        'neurofinder.00.00',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110714_cell1',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110727_cell2',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110803_cell2',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110805_cell7',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110805_cell12',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110826_cell1',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110826_cell2',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110901_cell1',
+        'GCaMP5k_9cells_Akerboom2012/raw_data/20110907_cell4'
+    ]
+
+    for name in tests:
+        print(name)
         movie_noisy, gt = load_calcium_examples(name)
         movie_noisy -= movie_noisy.mean()
-        # test_vst_estimation_frame(movie_noisy, idx=0, gt=gt)
-        test_vst_estimation_movie(movie_noisy, gt=gt)
+        # test_vst_estimation_frame(movie_noisy, idx=0, gt=gt, filename=name)
+        test_vst_estimation_movie(movie_noisy, gt=gt, filename=name)
 
 
 if __name__ == '__main__':

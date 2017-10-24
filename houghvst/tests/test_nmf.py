@@ -1,18 +1,18 @@
 import colorcet as cc
 import glob
-from matplotlib.offsetbox import AnnotationBbox, OffsetImage
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import ImageGrid
 import numpy as np
 import os
 import peakutils
-from skimage.transform import downscale_local_mean
-import sklearn.decomposition as sk_dec
-from sklearn.utils.linear_assignment_ import linear_assignment
 import seaborn.apionly as sns
+import sklearn.decomposition as sk_dec
 import tifffile
+from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+from mpl_toolkits.axes_grid1 import ImageGrid
+from skimage.transform import downscale_local_mean
 import houghvst.estimation.gat as gat
-from houghvst.estimation.utils import half_sample_mode
+from houghvst.utils.tools import linear_assignment, switch_component_order,\
+    normalize
 
 
 def read_movie(filename, crop, downscale):
@@ -73,26 +73,22 @@ def correct_components_VST_NMF(A, C, sigma_sq, alpha):
 
 def process(params):
     movie = read_movie(params['file'], params['crop'], params['downscale'])
-    movie_gat = gat.compute_gat(movie, params['sigma_sq'],
+    movie_gat = gat.compute_gat(movie - movie.mean(), params['sigma_sq'],
                                 alpha=params['alpha'])
 
     n_components = params['n_components']
 
     A, C = compute_nmf(movie, n_components=n_components)
     A, C = correct_components_plain_NMF(A, C)
+
     A_gat, C_gat = compute_nmf(movie_gat, n_components=n_components)
     A_gat_inv, C_gat_inv = correct_components_VST_NMF(A_gat, C_gat,
                                                       params['sigma_sq'],
                                                       params['alpha'])
+    # A_gat_inv, C_gat_inv = correct_components_plain_NMF(A_gat, C_gat)
 
-    mat = A.T.dot(A_gat_inv)
-    mat /= np.linalg.norm(A, axis=0)[:, np.newaxis]
-    mat /= np.linalg.norm(A_gat_inv, axis=0)[np.newaxis, :]
-    mat = mat.max() - mat
-
-    la_idx = linear_assignment(mat)
-    A_gat_inv = A_gat_inv[:, la_idx[:, 1]]
-    C_gat_inv = C_gat_inv[la_idx[:, 1], :]
+    la_idx = linear_assignment(A, A_gat_inv)
+    A_gat_inv, C_gat_inv = switch_component_order(A_gat_inv, C_gat_inv, la_idx)
 
     n_rows = int(np.ceil(n_components / 10))
     n_cols = n_components // n_rows
@@ -127,12 +123,9 @@ def process(params):
         for i in range(n_components):
             print('Component {}'.format(i))
 
-            trace = C[i, :]
-            hsm = half_sample_mode(trace)
-            trace = (trace - hsm) / (trace.max() - hsm)
-            trace_gat = C_gat_inv[i, :]
-            trace_gat = (trace_gat - trace_gat.min()) / (trace_gat.max()
-                                                         - trace_gat.min())
+            trace = normalize(C[i, :])
+            trace_gat = normalize(C_gat_inv[i, :])
+
             fig, ax = plt.subplots(1, 1)
             ax.plot(trace_gat, label='VST+NMF', alpha=0.7, zorder=1)
             ax.plot(trace, label='NMF', alpha=0.7, zorder=0)

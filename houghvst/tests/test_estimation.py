@@ -5,18 +5,18 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn.apionly as sns
-from skimage import draw, measure
-from sklearn.neighbors.kde import KernelDensity
 import tifffile
 import timeit
+from skimage import draw, measure
+from sklearn.neighbors.kde import KernelDensity
+
 import houghvst.estimation.estimation as est
 from houghvst.estimation.gat import compute_gat
 from houghvst.estimation.regions import im2col
-from houghvst.estimation.utils import poisson_gaussian_noise
-from houghvst.tests.measures import compare_variance_stabilization,\
+from houghvst.tests.measures import compare_variance_stabilization, \
     compute_temporal_mean_var
 from houghvst.tests.plotting import plot_vst_accumulator_space
-
+from houghvst.utils.stats import poisson_gaussian_noise
 
 GroundTruth = namedtuple('GroundTruth', ['movie', 'alpha', 'sigma_sq'])
 
@@ -59,25 +59,34 @@ def load_calcium_examples(select):
         movie = tifffile.imread(s)
         # crop dark corners:
         movie = movie[:, 100:-100, 100:-100].astype(np.float)
+
     elif select == 'demo':
         movie = tifffile.imread('../../images/demoMovie.tif')
         movie = movie.astype(np.float)
+
     elif select == 'quiet':
         f = h5py.File('../../images/quietBlock.h5_at', 'r')
         movie = np.array(f['quietBlock'], dtype=np.float)[:1000]
+
     elif 'neurofinder' in select:
         dn = '../../images/' + select + '/images'
         movie = [tifffile.imread(fn) for fn in glob.iglob(dn + '/*.tif*')]
         movie = np.stack(movie, axis=0)
         # crop dark corners:
         movie = movie[:, 100:-100, 100:-100].astype(np.float)
-        print(movie.shape)
-    elif 'Akerboom2012' in select or 'Akerboom2012' in select:
-        dn = '../../images/cai-1/' + select
-        movie = [tifffile.imread(fn) for fn in glob.iglob(dn + '/*.tif*')][0]
-        movie = movie[::2].astype(np.float)
-        print(movie.shape)
 
+    elif 'cai-1' in select:
+        dn = '../../images/' + select
+        movie = [tifffile.imread(fn) for fn in glob.iglob(dn + '/*.tif*')]
+        movie = np.concatenate(movie, axis=0)
+        movie = movie.astype(np.float)
+
+        if 'Chen2013' in select:
+            movie = movie[::100]
+        if 'Akerboom2012' in select:
+            movie = movie[::2]
+
+    print(movie.shape)
     return movie, None
 
 
@@ -229,14 +238,17 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
 
         axes1.set_title('Patch mean vs patch variance')
 
+        # Accumulator space
         plot_vst_accumulator_space(res.acc_space_init, ax=axes2,
                                    plot_focus=True)
         axes2.set_title('Coarse accumulator space')
 
+        # Zoom-in on the accumulator space
         plot_vst_accumulator_space(res.acc_space, ax=axes3,
                                    plot_estimates=True)
         axes3.set_title('Focused accumulator space')
 
+        # Density plot of block variances
         blocks_gat = compute_gat(blocks, sigma_sq_init, alpha=alpha_init)
         _, variances_init = est.compute_mean_var(blocks_gat)
 
@@ -271,8 +283,9 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
         axes4.set_title('Patch variance density')
 
         if filename is not None:
-            if '/raw_data/' in filename:
+            if 'cai-1' in filename:
                 filename = filename.replace('/raw_data/', '_')
+                filename = filename.replace('/', '_')
             plt.savefig(filename + '_estimation.pdf')
 
 
@@ -281,19 +294,23 @@ def main():
     # test_vst_estimation_frame(movie_noisy, idx=0, gt=gt)
 
     tests = [
-        'k53',
+        # 'k53',
         'demo',
-        'quiet',
-        'neurofinder.00.00',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110714_cell1',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110727_cell2',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110803_cell2',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110805_cell7',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110805_cell12',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110826_cell1',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110826_cell2',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110901_cell1',
-        'GCaMP5k_9cells_Akerboom2012/raw_data/20110907_cell4'
+        # 'quiet',
+        # 'neurofinder.00.00',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110714_cell1',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110727_cell2',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110803_cell2',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110805_cell7',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110805_cell12',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110826_cell1',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110826_cell2',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110901_cell1',
+        # 'cai-1/GCaMP5k_9cells_Akerboom2012/raw_data/20110907_cell4',
+        # 'cai-1/GCaMP6f_11cells_Chen2013/raw_data/20120502_cell1/001',
+        # 'cai-1/GCaMP6f_11cells_Chen2013/raw_data/20120502_cell1/002',
+        # 'cai-1/GCaMP6f_11cells_Chen2013/raw_data/20120502_cell3/001',
+        # 'cai-1/GCaMP6f_11cells_Chen2013/raw_data/20120521_cell1/001'
     ]
 
     for name in tests:

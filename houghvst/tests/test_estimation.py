@@ -141,6 +141,12 @@ def test_vst_estimation_frame(movie, idx=0, gt=None, filename=None):
                         res, idx, gt=gt, filename=filename)
 
 
+def set_tick_label_size(axes, size='x-large'):
+    for tick_axis in [axes.xaxis, axes.yaxis]:
+        for tick in tick_axis.get_major_ticks():
+            tick.label.set_fontsize(size)
+
+
 def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
                         res, idx, gt=None, filename=None):
     img = movie[idx]
@@ -173,7 +179,7 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
     with sns.axes_style('white'):
         if gt is None:
             plt.figure(figsize=(24, 5))
-            gs = gridspec.GridSpec(1, 5, width_ratios=[2, 2, 3, 3, 3],
+            gs = gridspec.GridSpec(1, 5, width_ratios=[1, 3, 3, 3, 3],
                                    left=0.02, right=0.98, wspace=0.3)
 
             axes0 = plt.subplot(gs[0, 0])
@@ -184,7 +190,7 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
 
             axes0.imshow(img, cmap='viridis')
             axes0.axis('off')
-            axes0.set_title('Input image')
+            axes0.set_title('Input image', fontsize='xx-large')
         else:
             plt.figure(figsize=(24, 5))
             gs = gridspec.GridSpec(2, 5, width_ratios=[2, 2, 3, 3, 3],
@@ -199,10 +205,10 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
 
             axes00.imshow(img_gt, cmap='viridis')
             axes00.axis('off')
-            axes00.set_title('Noiseless image')
+            axes00.set_title('Noiseless image', fontsize='xx-large')
             axes10.imshow(img, cmap='viridis')
             axes10.axis('off')
-            axes10.set_title('Noisy image')
+            axes10.set_title('Noisy image', fontsize='xx-large')
 
         scatter_color = '#a6cee3'
 
@@ -222,10 +228,12 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
             axes1.plot(x, gt.alpha * x + gt.sigma_sq, color='k',
                        label='Ground truth')
 
-        axes1.set_xlabel('Mean')
-        axes1.set_ylabel('Variance')
+        set_tick_label_size(axes1)
 
-        lgnd = axes1.legend()
+        axes1.set_xlabel('Mean', fontsize='xx-large')
+        axes1.set_ylabel('Variance', fontsize='xx-large')
+
+        lgnd = axes1.legend(fontsize='xx-large')
         for h in lgnd.legendHandles:
             h._sizes = [200]
 
@@ -236,17 +244,18 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
         axes1.set_ylim((variances.min() - 0.1 * ydiff,
                         np.percentile(variances, 99) + 0.1 * ydiff))
 
-        axes1.set_title('Patch mean vs patch variance')
+        axes1.set_title('Patch mean vs patch variance', fontsize='xx-large')
 
         # Accumulator space
         plot_vst_accumulator_space(res.acc_space_init, ax=axes2,
                                    plot_focus=True)
-        axes2.set_title('Coarse accumulator space')
+        set_tick_label_size(axes2)
+        axes2.set_title('Coarse accumulator space', fontsize='xx-large')
 
         # Zoom-in on the accumulator space
-        plot_vst_accumulator_space(res.acc_space, ax=axes3,
-                                   plot_estimates=True)
-        axes3.set_title('Focused accumulator space')
+        plot_vst_accumulator_space(res.acc_space, ax=axes3, plot_estimates=True)
+        set_tick_label_size(axes3)
+        axes3.set_title('Focused accumulator space', fontsize='xx-large')
 
         # Density plot of block variances
         blocks_gat = compute_gat(blocks, sigma_sq_init, alpha=alpha_init)
@@ -278,9 +287,11 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
         idx_nnz = np.where(probas_both > 1e-4)[0]
         axes4.set_xlim(samples[0], samples[idx_nnz[-1]])
 
-        axes4.legend()
-        axes4.set_xlabel('Patch variance')
-        axes4.set_title('Patch variance density')
+        set_tick_label_size(axes4)
+
+        axes4.legend(fontsize='xx-large')
+        axes4.set_xlabel('Patch variance', fontsize='xx-large')
+        axes4.set_title('Patch variance density', fontsize='xx-large')
 
         if filename is not None:
             if 'cai-1' in filename:
@@ -294,7 +305,7 @@ def main():
     # test_vst_estimation_frame(movie_noisy, idx=0, gt=gt)
 
     tests = [
-        # 'k53',
+        'k53',
         'demo',
         # 'quiet',
         # 'neurofinder.00.00',

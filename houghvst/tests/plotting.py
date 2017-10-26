@@ -144,8 +144,8 @@ def plot_vst_accumulator_space(acc_space, cmap=cc.m_fire, ax=None,
                                acc_space.sigma_sq_range[0] - sigma_step0 / 2)
                        )
     ax.axis('tight')
-    ax.set_xlabel(r'$\alpha$')
-    ax.set_ylabel(r'$\sigma$')
+    ax.set_xlabel(r'$\alpha$', fontsize='xx-large')
+    ax.set_ylabel(r'$\sigma$', fontsize='xx-large')
     plt.colorbar(mappable=im_plt, ax=ax)
 
     if plot_focus:
@@ -159,12 +159,12 @@ def plot_vst_accumulator_space(acc_space, cmap=cc.m_fire, ax=None,
         ax.add_artist(rect)
 
     if plot_estimates:
-        tag_str = r'Estimated: $\alpha={:.2f}$, $\sigma={:.2f}$'
+        tag_str = r'$\alpha={:.2f}$, $\sigma={:.2f}$'
         bbox_props = dict(boxstyle='round', fc='w', ec='#0000cd', alpha=0.5)
         ax.annotate(tag_str.format(acc_space.alpha, acc_space.sigma_sq),
                        xy=(acc_space.alpha, acc_space.sigma_sq), xycoords='data',
                        xytext=(0.95, 0.05), textcoords='axes fraction',
-                       va='bottom', ha='right', color='#0000cd', size='large',
+                       va='bottom', ha='right', color='#0000cd', size='xx-large',
                        bbox=bbox_props,
                        arrowprops=dict(facecolor='#0000cd', edgecolor='none',
                                        shrink=0., width=2, headwidth=3,

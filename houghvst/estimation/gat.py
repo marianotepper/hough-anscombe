@@ -24,7 +24,7 @@ def compute_gat(arr, sigma_sq, alpha=1):
     return f
 
 
-def compute_inverse_gat(arr, sigma_sq, m=0, alpha=1, method='closed-form'):
+def compute_inverse_gat(arr, sigma_sq, m=0, alpha=1, method='asym'):
     """
     Inverse of the Generalized Anscombe variance-stabilizing
     transformation
@@ -43,7 +43,8 @@ def compute_inverse_gat(arr, sigma_sq, m=0, alpha=1, method='closed-form'):
     :param m: mean of the Gaussian noise component
     :param alpha: scaling factor of the Poisson noise component
     :param method: 'closed_form' applies the closed-form approximation
-    of the exact unbiased inverse 
+    of the exact unbiased inverse. 'asym' applies the asymptotic
+    approximation of the exact unbiased inverse.
     :return: inverse variance-stabilized array
     """
     sigma_sq /= alpha ** 2

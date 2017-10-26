@@ -15,6 +15,12 @@ from houghvst.tests.measures import assess_variance_stabilization,\
     compute_temporal_mean_var
 
 
+def fix_scientific_notation(x):
+    s = '{:.1e}'.format(x)
+    s = s.replace('+0', '')
+    return s
+
+
 def ground_truth_pixelwise(dir_name, files, box=None, plt_regression=True):
     colors = sns.color_palette('Pastel1', len(files))
     colors_means = sns.color_palette('Set1', len(files))
@@ -47,7 +53,7 @@ def ground_truth_pixelwise(dir_name, files, box=None, plt_regression=True):
             mod = LinearRegression()
             mod.fit(np.array(means_means)[:, np.newaxis],
                     np.array(variances_means))
-            x = np.array([1600, 2700])[:, np.newaxis]
+            x = np.array([1400, 2600])[:, np.newaxis]
             axes_scatter.plot(x, mod.predict(x), 'k-', zorder=11)
             print('Linear fit:', mod.coef_[0], mod.intercept_)
 
@@ -57,10 +63,10 @@ def ground_truth_pixelwise(dir_name, files, box=None, plt_regression=True):
                                  edgecolor='k', zorder=1000)
 
         axes_scatter.yaxis.set_major_formatter(
-            plt_tick.FormatStrFormatter('%.1e'))
+            plt_tick.FuncFormatter(lambda t, pos: fix_scientific_notation(t)))
 
-        axes_scatter.set_xlabel('Mean')
-        axes_scatter.set_ylabel('Variance')
+        axes_scatter.set_xlabel('Mean', fontsize='large')
+        axes_scatter.set_ylabel('Variance', fontsize='large')
 
         markers1 = [plt_lines.Line2D([], [], marker='o', color=colors[k],
                                      linestyle='None')
@@ -74,8 +80,8 @@ def ground_truth_pixelwise(dir_name, files, box=None, plt_regression=True):
         label2 = ['Movie {} - pixel AVG'.format(k+1)
                   for k in range(len(files))]
         plt.legend(markers1 + markers2, label1 + label2,
-                   bbox_to_anchor=(1.01, 1), loc='best')
-        fig.tight_layout(rect=(0, 0, 0.78, 1))
+                   bbox_to_anchor=(1.01, 1), loc='best', fontsize='large')
+        fig.tight_layout(rect=(0, 0, 0.73, 1))
         plt.savefig('ground_truth_pixelwise.pdf')
 
     return means_means, variances_means
@@ -119,10 +125,10 @@ def ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
                          edgecolor=colors_means[k], zorder=1000)
 
         axes.yaxis.set_major_formatter(
-            plt_tick.FormatStrFormatter('%.1e'))
+            plt_tick.FuncFormatter(lambda t, pos: fix_scientific_notation(t)))
 
-        axes.set_xlabel('Mean')
-        axes.set_ylabel('Variance')
+        axes.set_xlabel('Mean', fontsize='large')
+        axes.set_ylabel('Variance', fontsize='large')
 
         markers1 = [plt_lines.Line2D([], [], marker='o', color=colors[k],
                                      linestyle='None')
@@ -142,7 +148,7 @@ def ground_truth_patchwise(dir_name, files, gt_means_means, gt_vars_means,
         label3 = ['Movie {} - pixel AVG'.format(k+1)
                   for k in range(len(files))]
         plt.legend(markers1 + markers2 + markers3, label1 + label2 + label3,
-                   bbox_to_anchor=(1.01, 1), loc='best')
+                   bbox_to_anchor=(1.01, 1), loc='best', fontsize='large')
         fig.tight_layout(rect=(0, 0, 0.7, 1))
         plt.savefig('ground_truth_patchwise.pdf')
 
@@ -263,8 +269,9 @@ def ground_truth_estimate_vst(dir_name, files, box=None, block_size=8,
         pos = np.arange(1, 2 * len(files), 2) - 0.2
         vio_multi = plt.violinplot(variances_all_multi_image, positions=pos)
         plt.xticks(2 * np.arange(len(files)) + 0.5,
-                   ['Movie {}'.format(k+1) for k in range(len(files))])
-        plt.ylabel('Stabilized noise variance per frame')
+                   ['Movie {}'.format(k+1) for k in range(len(files))],
+                   fontsize='large')
+        plt.ylabel('Stabilized noise variance per frame', fontsize='large')
 
         p_single = plt_patches.Patch(
             facecolor=vio_single['bodies'][0].get_facecolor().flatten(),
@@ -274,7 +281,8 @@ def ground_truth_estimate_vst(dir_name, files, box=None, block_size=8,
             facecolor=vio_multi['bodies'][0].get_facecolor().flatten(),
             edgecolor=vio_multi['cbars'].get_edgecolor().flatten(),
             label='Multi-image estimation')
-        plt.legend(handles=[p_single, p_multi], loc='upper right')
+        plt.legend(handles=[p_single, p_multi], loc='upper right',
+                   fontsize='large')
         plt.savefig('ground_truth_single-multi.pdf')
 
 
@@ -333,7 +341,7 @@ def main():
     files = ['20170718_FluoroSlide_t-0{:02d}_Cycle00001_Ch1.tif'.format(k)
              for k in range(6, 11)]
 
-    movie_plot(dir_name, files)
+    # movie_plot(dir_name, files)
 
     box = [50, -50, 50, -50]
     ground_truth_estimate_vst(dir_name, files, box=box)

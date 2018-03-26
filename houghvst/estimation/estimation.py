@@ -94,7 +94,7 @@ def estimate_vst_blocks(blocks):
     print('\tinitial alpha = {}; sigma^2 = {}'.format(alpha_init,
                                                       sigma_sq_init))
 
-    diff_s = np.maximum(2e4, np.abs(sigma_sq_init))
+    diff_s = np.maximum(2e3, np.abs(sigma_sq_init))
     diff_a = alpha_init * 0.9
 
     sigma_sq_range = np.linspace(sigma_sq_init - diff_s, sigma_sq_init + diff_s,

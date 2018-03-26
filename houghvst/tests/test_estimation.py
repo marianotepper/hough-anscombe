@@ -54,6 +54,12 @@ def load_toy_example():
 
 
 def load_calcium_examples(select):
+    if select == 'Yr_reduced':
+        s = '../../images/' \
+            'Yr_reduced_0000_d1_463_d2_472_d3_1_order_C_frames_1000_.tif'
+        movie = tifffile.imread(s)
+        # movie = movie[:, 0:76, 370:].astype(np.float)
+        movie = movie.astype(np.float)
     if select == 'k53':
         s = '../../images/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00012.tif'
         movie = tifffile.imread(s)
@@ -233,9 +239,9 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
         axes1.set_xlabel('Mean', fontsize='xx-large')
         axes1.set_ylabel('Variance', fontsize='xx-large')
 
-        lgnd = axes1.legend(fontsize='xx-large')
-        for h in lgnd.legendHandles:
-            h._sizes = [200]
+        # lgnd = axes1.legend(markerscale=5, fontsize='xx-large')
+        # for h in lgnd.legendHandles:
+        #     h._sizes = [600]
 
         xdiff = np.percentile(means, 99) - means.min()
         ydiff = np.percentile(variances, 99) - variances.min()
@@ -289,7 +295,7 @@ def plot_vst_estimation(movie, blocks, sigma_sq_init, alpha_init,
 
         set_tick_label_size(axes4)
 
-        axes4.legend(fontsize='xx-large')
+        axes4.legend(fontsize='xx-large', loc='upper right')
         axes4.set_xlabel('Patch variance', fontsize='xx-large')
         axes4.set_title('Patch variance density', fontsize='xx-large')
 
@@ -305,7 +311,8 @@ def main():
     # test_vst_estimation_frame(movie_noisy, idx=0, gt=gt)
 
     tests = [
-        'k53',
+        # 'Yr_reduced',
+        # 'k53',
         'demo',
         # 'quiet',
         # 'neurofinder.00.00',

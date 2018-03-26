@@ -145,7 +145,7 @@ def plot_vst_accumulator_space(acc_space, cmap=cc.m_fire, ax=None,
                        )
     ax.axis('tight')
     ax.set_xlabel(r'$\alpha$', fontsize='xx-large')
-    ax.set_ylabel(r'$\sigma$', fontsize='xx-large')
+    ax.set_ylabel(r'$\beta$', fontsize='xx-large')
     plt.colorbar(mappable=im_plt, ax=ax)
 
     if plot_focus:
@@ -159,7 +159,7 @@ def plot_vst_accumulator_space(acc_space, cmap=cc.m_fire, ax=None,
         ax.add_artist(rect)
 
     if plot_estimates:
-        tag_str = r'$\alpha={:.2f}$, $\sigma={:.2f}$'
+        tag_str = r'$\alpha={:.2f}$, $\beta={:.2f}$'
         bbox_props = dict(boxstyle='round', fc='w', ec='#0000cd', alpha=0.5)
         ax.annotate(tag_str.format(acc_space.alpha, acc_space.sigma_sq),
                        xy=(acc_space.alpha, acc_space.sigma_sq), xycoords='data',

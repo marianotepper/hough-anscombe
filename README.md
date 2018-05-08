@@ -5,6 +5,6 @@ The hough-anscombe repository contains the code corresponding to the paper:
     In ICASSP, 2018
     https://marianotepper.github.io/papers/anscombe-meets-hough.pdf
 
-Dependencies: cvxpy matplotlib numpy pillow scipy seaborn
+Dependencies: matplotlib numpy pillow scipy seaborn
 
 Copyright (c) 2017 by Mariano Tepper, Flatiron Institute, Simons Foundation

@@ -1,4 +1,4 @@
-The nomad repository contains the code corresponding to the paper:
+The hough-anscombe repository contains the code corresponding to the paper:
 
     M. Tepper, A. Giovannucci, E. Pnevmatikakis
     Anscombe meets Hough: Noise variance stabilization via parametric model estimation.
